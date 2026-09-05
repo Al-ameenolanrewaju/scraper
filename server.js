@@ -1,5 +1,4 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
 const express = require('express');
 
 const app = express();
@@ -26,9 +25,27 @@ const client = new Client({
 let isReady = false;
 
 // 1. QR Code Event
-client.on('qr', (qr) => {
-    console.log('--- SCAN THIS QR CODE IN RENDER LOGS ---');
-    qrcode.generate(qr, { small: true });
+const QRCode = require('qrcode');
+let qrCodeData = '';
+
+client.on('qr', async (qr) => {
+    // Convert QR code to Data URL for browser display
+    qrCodeData = await QRCode.toDataURL(qr);
+    console.log('New QR code generated. Access it via your Render URL /qr');
+});
+
+// Add this route to your existing Express app
+app.get('/qr', (req, res) => {
+    if (!qrCodeData) {
+        return res.send('<h2>QR Code not generated yet or WhatsApp is already connected!</h2>');
+    }
+    res.send(`
+        <html>
+            <body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#000;">
+                <img src="${qrCodeData}" style="width:300px;height:300px;" />
+            </body>
+        </html>
+    `);
 });
 
 // 2. Ready Event (Correctly sets isReady flag)

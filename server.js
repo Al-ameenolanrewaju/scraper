@@ -5,22 +5,27 @@ const app = express();
 app.use(express.json());
 
 const client = new Client({
-    authStrategy: new LocalAuth(), // or RemoteAuth
+    authStrategy: new LocalAuth({
+        clientId: "render-session"
+    }),
+    webVersionCache: {
+        type: 'remote',
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1014587000-alpha.html',
+    },
     puppeteer: {
         headless: true,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',      // Uses /tmp instead of /dev/shm (prevents memory crash)
+            '--disable-dev-shm-usage',
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--single-process',             // Conserves CPU on cloud instances
-            '--disable-gpu'
+            '--disable-gpu',
+            '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
         ],
-        timeout: 60000 // Increase browser connection timeout to 60s
-    },
-    qrMaxRetries: 5 // Allows the QR code to regenerate without failing immediately
+        timeout: 90000
+    }
 });
 
 let isReady = false;

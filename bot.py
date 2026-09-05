@@ -67,7 +67,7 @@ def get_active_serpapi_key() -> str:
             return key
     return None
 
-def fetch_osm_leads(query: str, target_count: int = 30):
+def fetch_osm_leads(query: str, target_count: int = 100):
     """
     Lead generation engine with automatic SerpApi key failover and pagination.
     """

@@ -26,7 +26,7 @@ COPY requirements.txt ./
 
 # Install Node and Python packages
 RUN npm install
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
 
 # Copy source code
 COPY . .

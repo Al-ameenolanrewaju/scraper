@@ -12,20 +12,20 @@ const client = new Client({
         type: 'remote',
         remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1014587000-alpha.html',
     },
+    qrMaxRetries: 5, // Prevents infinite QR generation loops
     puppeteer: {
         headless: true,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',      // Prevents shared memory crashes
+            '--disable-dev-shm-usage',
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--single-process',             // Forces single-process mode to conserve RAM
-            '--disable-gpu',                // Disables GPU hardware acceleration
-            '--js-flags="--max-old-space-size=256"' // Limits Chrome V8 engine memory usage
+            '--single-process',
+            '--disable-gpu'
         ],
-        timeout: 90000
+        timeout: 120000 // Extended timeout for slow cloud instances
     }
 });
 

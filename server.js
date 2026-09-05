@@ -5,47 +5,38 @@ const app = express();
 app.use(express.json());
 
 const client = new Client({
-    authStrategy: new LocalAuth(),
+    authStrategy: new LocalAuth(), // or RemoteAuth
     puppeteer: {
         headless: true,
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
+            '--disable-dev-shm-usage',      // Uses /tmp instead of /dev/shm (prevents memory crash)
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--single-process',
+            '--single-process',             // Conserves CPU on cloud instances
             '--disable-gpu'
-        ]
-    }
+        ],
+        timeout: 60000 // Increase browser connection timeout to 60s
+    },
+    qrMaxRetries: 5 // Allows the QR code to regenerate without failing immediately
 });
 
 let isReady = false;
 
 // 1. QR Code Event
 const QRCode = require('qrcode');
-let qrCodeData = '';
+let latestQr = '';
 
 client.on('qr', async (qr) => {
-    // Convert QR code to Data URL for browser display
-    qrCodeData = await QRCode.toDataURL(qr);
-    console.log('New QR code generated. Access it via your Render URL /qr');
+    latestQr = await QRCode.toDataURL(qr);
+    console.log('New QR generated. Visit /qr on your Render URL.');
 });
 
-// Add this route to your existing Express app
 app.get('/qr', (req, res) => {
-    if (!qrCodeData) {
-        return res.send('<h2>QR Code not generated yet or WhatsApp is already connected!</h2>');
-    }
-    res.send(`
-        <html>
-            <body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#000;">
-                <img src="${qrCodeData}" style="width:300px;height:300px;" />
-            </body>
-        </html>
-    `);
+    if (!latestQr) return res.send('<h3>QR Code not ready or already linked. Refresh in a few seconds.</h3>');
+    res.send(`<div style="display:flex;justify-content:center;align-items:center;height:100vh;"><img src="${latestQr}" style="width:300px;"/></div>`);
 });
 
 // 2. Ready Event (Correctly sets isReady flag)

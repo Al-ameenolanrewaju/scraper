@@ -1,9 +1,14 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const express = require('express');
+const QRCode = require('qrcode');
 
 const app = express();
 app.use(express.json());
 
+let isReady = false;
+let latestQr = '';
+
+// Configure Client with extreme memory limits for Render containers
 const client = new Client({
     authStrategy: new LocalAuth({
         clientId: "render-session"
@@ -12,7 +17,7 @@ const client = new Client({
         type: 'remote',
         remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1014587000-alpha.html',
     },
-    qrMaxRetries: 5, // Prevents infinite QR generation loops
+    qrMaxRetries: 5,
     puppeteer: {
         headless: true,
         args: [
@@ -22,43 +27,62 @@ const client = new Client({
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--single-process',
-            '--disable-gpu'
+            '--single-process',             // Conserves CPU on single-core instances
+            '--disable-gpu',
+            '--js-flags="--max-old-space-size=256"' // Hard cap Chrome V8 memory at 256MB
         ],
-        timeout: 120000 // Extended timeout for slow cloud instances
+        timeout: 120000
     }
 });
 
-let isReady = false;
-
 // 1. QR Code Event
-const QRCode = require('qrcode');
-let latestQr = '';
-
 client.on('qr', async (qr) => {
     latestQr = await QRCode.toDataURL(qr);
     console.log('New QR generated. Visit /qr on your Render URL.');
 });
 
 app.get('/qr', (req, res) => {
-    if (!latestQr) return res.send('<h3>QR Code not ready or already linked. Refresh in a few seconds.</h3>');
-    res.send(`<div style="display:flex;justify-content:center;align-items:center;height:100vh;"><img src="${latestQr}" style="width:300px;"/></div>`);
+    if (isReady) {
+        return res.send(`
+            <div style="display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;background:#111;color:#fff;">
+                <h2>✅ WhatsApp Web Client is connected and active!</h2>
+            </div>
+        `);
+    }
+
+    if (!latestQr) {
+        return res.send(`
+            <div style="display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;background:#111;color:#fff;">
+                <h3>QR Code generating or loading... Refresh in a few seconds.</h3>
+            </div>
+        `);
+    }
+
+    res.send(`
+        <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;background:#111;color:#fff;">
+            <h2 style="margin-bottom:20px;">Scan with WhatsApp</h2>
+            <img src="${latestQr}" style="width:300px;height:300px;border-radius:12px;background:#fff;padding:10px;"/>
+        </div>
+    `);
 });
 
-// 2. Ready Event (Correctly sets isReady flag)
+// 2. Ready Event
 client.on('ready', () => {
     isReady = true;
+    latestQr = ''; // Clear stale QR string once authenticated
     console.log('✅ WhatsApp Web Client is Ready!');
 });
 
 // 3. Status Tracking Events
 client.on('auth_failure', (msg) => {
     isReady = false;
+    latestQr = '';
     console.error('❌ Auth failure:', msg);
 });
 
 client.on('disconnected', (reason) => {
     isReady = false;
+    latestQr = '';
     console.warn('⚠️ WhatsApp Web disconnected:', reason);
 });
 
@@ -70,7 +94,6 @@ client.on('loading_screen', (percent, message) => {
 app.post('/send-message', async (req, res) => {
     const { phone, message } = req.body;
 
-    // Check if engine is initialized
     if (!isReady) {
         return res.status(503).json({
             success: false,
@@ -114,7 +137,12 @@ app.post('/send-message', async (req, res) => {
     }
 });
 
-// Single Client Initialization
+// Base Route
+app.get('/', (req, res) => {
+    res.send('WhatsApp Engine Service is running.');
+});
+
+// Start Client and Express App
 client.initialize();
 
 const PORT = process.env.PORT || 8080;

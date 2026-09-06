@@ -1,12 +1,10 @@
-const { makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const express = require('express');
-const QRCode = require('qrcode');
 
 const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT || 8080;
-let latestQr = '';
 let isReady = false;
 let sock;
 
@@ -16,20 +14,14 @@ async function connectToWhatsApp() {
 
     sock = makeWASocket({
         auth: state,
-        printQRInTerminal: true,
-        browser: ['Render Engine', 'Chrome', '1.0.0']
+        printQRInTerminal: false, // QR code generation disabled
+        browser: ['Ubuntu', 'Chrome', '20.0.04']
     });
 
     sock.ev.on('creds.update', saveCreds);
 
-    sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect, qr } = update;
-
-        if (qr) {
-            latestQr = await QRCode.toDataURL(qr);
-            isReady = false;
-            console.log('New Baileys QR Code generated. Visit /qr to scan.');
-        }
+    sock.ev.on('connection.update', (update) => {
+        const { connection, lastDisconnect } = update;
 
         if (connection === 'close') {
             isReady = false;
@@ -43,29 +35,47 @@ async function connectToWhatsApp() {
         } else if (connection === 'open') {
             console.log('✅ WhatsApp Engine successfully connected via Baileys!');
             isReady = true;
-            latestQr = '';
         }
     });
 }
 
-// QR Code route
-app.get('/qr', (req, res) => {
-    if (isReady) {
-        return res.send('<h2 style="font-family:sans-serif;text-align:center;margin-top:50px;color:#00ff88;">✅ WhatsApp is connected and active!</h2>');
+// 8-Digit Pairing Code Route (e.g., /pair-code?phone=2348000000000)
+app.get('/pair-code', async (req, res) => {
+    const { phone } = req.query;
+
+    if (!phone) {
+        return res.status(400).json({
+            success: false,
+            error: 'Provide a phone number parameter. Example: /pair-code?phone=2348000000000'
+        });
     }
-    if (!latestQr) {
-        return res.send('<h2 style="font-family:sans-serif;text-align:center;margin-top:50px;">QR code generating... Refresh in 5 seconds.</h2>');
+
+    if (!sock) {
+        return res.status(503).json({
+            success: false,
+            error: 'WhatsApp socket is initializing. Try again in 5 seconds.'
+        });
     }
-    res.send(`
-        <html>
-            <body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#111;margin:0;">
-                <div style="text-align:center;background:#fff;padding:20px;border-radius:12px;">
-                    <h3 style="font-family:sans-serif;color:#333;margin-bottom:15px;">Scan with WhatsApp</h3>
-                    <img src="${latestQr}" style="width:280px;height:280px;"/>
-                </div>
-            </body>
-        </html>
-    `);
+
+    try {
+        let cleanPhone = phone.toString().replace(/\D/g, '');
+        if (cleanPhone.startsWith('0') && cleanPhone.length === 11) {
+            cleanPhone = '234' + cleanPhone.substring(1);
+        }
+
+        // Request pairing code directly from Baileys socket
+        const code = await sock.requestPairingCode(cleanPhone);
+
+        console.log(`🔑 Pairing code generated for +${cleanPhone}: ${code}`);
+        return res.json({
+            success: true,
+            phone: cleanPhone,
+            pairingCode: code
+        });
+    } catch (err) {
+        console.error('❌ Failed to generate pairing code:', err.message);
+        return res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 // Outreach Message Endpoint (compatible with Python bot)
@@ -95,7 +105,7 @@ app.post('/send-message', async (req, res) => {
         const jid = `${formattedPhone}@s.whatsapp.net`;
         await sock.sendMessage(jid, { text: message });
 
-        console.log(`📩 Pitch successfully sent to +${formattedPhone}`);
+        console.log(`📩 Message successfully sent to +${formattedPhone}`);
         return res.json({ success: true, recipient: formattedPhone });
 
     } catch (err) {
@@ -105,7 +115,10 @@ app.post('/send-message', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.send('WhatsApp Baileys Engine Running.');
+    res.json({
+        status: 'online',
+        connected: isReady
+    });
 });
 
 app.listen(PORT, () => {

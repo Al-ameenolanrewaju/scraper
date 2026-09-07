@@ -3,7 +3,6 @@ const express = require('express');
 
 const app = express();
 app.use(express.json());
-const express = require('express');
 
 // Async delay helper
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

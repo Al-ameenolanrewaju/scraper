@@ -3,6 +3,8 @@ import requests
 import os
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
+import asyncio
+import random
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -318,11 +320,19 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Would you be open to a quick chat about how this works?"
         )
 
-        await query.edit_message_text(f"⏳ Dispatching WhatsApp pitch to `+{target_phone}`...", parse_mode="Markdown")
+        # Notify user that process started
+        await query.edit_message_text(f"⏳ Preparing outreach for `+{target_phone}`...", parse_mode="Markdown")
+
+        # 1. Telegram Layer Delay: Random pause (3 to 6 seconds)
+        human_delay = random.uniform(3.0, 6.0)
+        await asyncio.sleep(human_delay)
+
+        await query.message.reply_text(f"📤 Queueing WhatsApp dispatch for `+{target_phone}`...", parse_mode="Markdown")
 
         try:
             payload = {"phone": target_phone, "message": pitch_text}
-            res = requests.post(f"{NODE_ENGINE_URL}/send-message", json=payload, timeout=15)
+            # Timeout set to 30s to allow for Node queue wait times
+            res = requests.post(f"{NODE_ENGINE_URL}/send-message", json=payload, timeout=30)
             res_data = res.json()
 
             if res.status_code == 200 and res_data.get("success"):

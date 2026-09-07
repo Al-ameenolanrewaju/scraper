@@ -3,6 +3,14 @@ const express = require('express');
 
 const app = express();
 app.use(express.json());
+const express = require('express');
+
+// Async delay helper
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Centralized message queue
+let isProcessingQueue = false;
+const messageQueue = [];
 
 const PORT = process.env.PORT || 8080;
 let isReady = false;
@@ -79,40 +87,47 @@ app.get('/pair-code', async (req, res) => {
 });
 
 // Outreach Message Endpoint (compatible with Python bot)
-app.post('/send-message', async (req, res) => {
-    const { phone, message } = req.body;
+app.post('/send-message', (req, res) => {
+  const { phone, message } = req.body;
 
-    if (!isReady || !sock) {
-        return res.status(503).json({
-            success: false,
-            error: 'WhatsApp engine is still synchronizing or not logged in.'
-        });
-    }
+  if (!phone || !message) {
+    return res.status(400).json({ success: false, error: 'Phone and message required.' });
+  }
 
-    if (!phone || !message) {
-        return res.status(400).json({
-            success: false,
-            error: 'Phone and message are required parameters.'
-        });
-    }
-
-    try {
-        let formattedPhone = phone.toString().replace(/\D/g, '');
-        if (formattedPhone.startsWith('0') && formattedPhone.length === 11) {
-            formattedPhone = '234' + formattedPhone.substring(1);
-        }
-
-        const jid = `${formattedPhone}@s.whatsapp.net`;
-        await sock.sendMessage(jid, { text: message });
-
-        console.log(`📩 Message successfully sent to +${formattedPhone}`);
-        return res.json({ success: true, recipient: formattedPhone });
-
-    } catch (err) {
-        console.error('❌ Failed to send message:', err.message);
-        return res.status(500).json({ success: false, error: err.message });
-    }
+  // Push to queue and return connection immediately or wait in queue
+  messageQueue.push({ phone, message, res });
+  processQueue();
 });
+
+async function processQueue() {
+  if (isProcessingQueue || messageQueue.length === 0) return;
+  isProcessingQueue = true;
+
+  const currentTask = messageQueue.shift();
+
+  try {
+    const formattedPhone = `${currentTask.phone}@s.whatsapp.net`;
+
+    // Execute Baileys send message
+    await sock.sendMessage(formattedPhone, { text: currentTask.message });
+
+    currentTask.res.json({ success: true, message: 'Message delivered to WhatsApp.' });
+
+    // Node-level safety delay: Wait a random 10 to 15 seconds before processing next message
+    const queueDelay = Math.floor(Math.random() * 5000) + 10000; // 10,000ms - 15,000ms
+    console.log(`[Queue] Waiting ${(queueDelay / 1000).toFixed(1)}s before next dispatch...`);
+    await delay(queueDelay);
+
+  } catch (err) {
+    console.error('[Queue Error]', err);
+    if (!currentTask.res.headersSent) {
+      currentTask.res.status(500).json({ success: false, error: err.message });
+    }
+  } finally {
+    isProcessingQueue = false;
+    processQueue(); // Process next item in line
+  }
+}
 
 app.get('/', (req, res) => {
     res.json({

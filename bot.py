@@ -4,6 +4,7 @@ import os
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 import asyncio
+import logging
 import random
 from telegram import (
     Update,
@@ -24,6 +25,9 @@ from telegram.ext import (
     filters,
 )
 from telegram.request import HTTPXRequest
+from telegram.error import NetworkError
+
+logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -384,11 +388,20 @@ async def post_init(application):
     await application.bot.set_my_commands(commands)
 
 
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    error = context.error
+    if isinstance(error, NetworkError):
+        logger.warning("Telegram network error; polling will retry: %s", error)
+        return
+
+    logger.error("Unhandled Telegram update error", exc_info=error)
+
+
 # ----------------------------------------------------
 # INITIALIZATION
 # ----------------------------------------------------
 def main():
-    request = HTTPXRequest(connect_timeout=20.0, read_timeout=20.0)
+    request = HTTPXRequest(connect_timeout=30.0, read_timeout=30.0)
 
     app = (
         ApplicationBuilder()
@@ -421,6 +434,7 @@ def main():
 
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_menu_text))
+    app.add_error_handler(error_handler)
 
     print("Telegram Control Panel with WhatsApp Pairing UI is online!")
     app.run_polling(drop_pending_updates=True)

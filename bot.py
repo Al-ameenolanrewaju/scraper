@@ -25,7 +25,7 @@ from telegram.ext import (
     filters,
 )
 from telegram.request import HTTPXRequest
-from telegram.error import NetworkError
+from telegram.error import Conflict, NetworkError
 
 logger = logging.getLogger(__name__)
 
@@ -392,6 +392,12 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     error = context.error
     if isinstance(error, NetworkError):
         logger.warning("Telegram network error; polling will retry: %s", error)
+        return
+    if isinstance(error, Conflict):
+        logger.error(
+            "Telegram polling conflict; stop all other bot instances before retrying: %s",
+            error,
+        )
         return
 
     logger.error("Unhandled Telegram update error", exc_info=error)
